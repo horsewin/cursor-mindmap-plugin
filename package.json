@@ -1,0 +1,66 @@
+{
+  "name": "cursor-mindmap",
+  "displayName": "Mindmap Editor",
+  "description": "Visual mindmap editor for *.mindmap.md files",
+  "version": "0.1.0",
+  "publisher": "cursor-mindmap",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "activationEvents": [
+    "onCustomEditor:cursorMindmap.mindmapEditor"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "cursorMindmap.mindmapEditor",
+        "displayName": "Mindmap Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.mindmap.md"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "commands": [
+      {
+        "command": "cursorMindmap.newMindmap",
+        "title": "Mindmap: New Mindmap"
+      },
+      {
+        "command": "cursorMindmap.exportSvg",
+        "title": "Mindmap: Export as SVG"
+      },
+      {
+        "command": "cursorMindmap.exportMarkdown",
+        "title": "Mindmap: Export as Markdown"
+      }
+    ],
+    "languages": [
+      {
+        "id": "mindmap",
+        "extensions": [
+          ".mindmap.md"
+        ],
+        "aliases": [
+          "Mindmap"
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  }
+}
