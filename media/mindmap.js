@@ -408,9 +408,10 @@
     group.appendChild(rect);
 
     // Text
+    const textAreaHeight = getFontSize(node.depth) + NODE_PADDING_Y * 2;
     const text = createSvgElement('text');
     text.setAttribute('x', String(node.width / 2));
-    text.setAttribute('y', String(node.height / 2));
+    text.setAttribute('y', String(textAreaHeight / 2));
     text.setAttribute('text-anchor', 'middle');
     text.setAttribute('dominant-baseline', 'central');
     text.setAttribute('font-size', String(getFontSize(node.depth)));
