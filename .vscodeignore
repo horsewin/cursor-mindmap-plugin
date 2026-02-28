@@ -1,6 +1,11 @@
 .vscode/**
 .vscode-test/**
+.claude/**
+.git/**
 src/**
 node_modules/**
+examples/**
 tsconfig.json
 .gitignore
+*.vsix
+*.code-workspace
