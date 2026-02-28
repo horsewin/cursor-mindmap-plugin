@@ -256,6 +256,48 @@ body {
   stroke-dasharray: 5 3;
 }
 
+/* Drag Ghost Overlay */
+.mm-drag-ghost-overlay {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: none;
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: var(--vscode-editor-background, #1e1e1e);
+  color: var(--vscode-editor-foreground, #cccccc);
+  border: 2px solid var(--vscode-focusBorder, #0078d4);
+  font-size: 13px;
+  opacity: 0.85;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transform: translate(-50%, -120%);
+}
+
+/* Drop Indicator */
+.mm-drop-indicator-line {
+  stroke: var(--vscode-focusBorder, #0078d4);
+  stroke-width: 2;
+  stroke-dasharray: 6 3;
+  pointer-events: none;
+}
+
+.mm-drop-indicator-dot {
+  fill: var(--vscode-focusBorder, #0078d4);
+  pointer-events: none;
+}
+
+/* Image Thumbnail */
+.mm-node-image {
+  pointer-events: none;
+}
+
+.mm-image-placeholder {
+  fill: var(--vscode-editor-background, #2d2d2d);
+  stroke: var(--vscode-panel-border, #474747);
+  stroke-width: 1;
+  stroke-dasharray: 4 2;
+}
+
 /* Branch colors palette */
 .branch-color-0 { --branch-color: #4fc3f7; }
 .branch-color-1 { --branch-color: #81c784; }
@@ -265,3 +307,41 @@ body {
 .branch-color-5 { --branch-color: #4dd0e1; }
 .branch-color-6 { --branch-color: #aed581; }
 .branch-color-7 { --branch-color: #ff8a65; }
+
+/* Context Menu */
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 180px;
+  background: var(--vscode-menu-background, #252526);
+  color: var(--vscode-menu-foreground, #cccccc);
+  border: 1px solid var(--vscode-menu-border, #454545);
+  border-radius: 5px;
+  padding: 4px 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  font-size: 12px;
+}
+
+.context-menu-item {
+  padding: 6px 20px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s;
+}
+
+.context-menu-item:hover {
+  background: var(--vscode-menu-selectionBackground, #094771);
+  color: var(--vscode-menu-selectionForeground, #ffffff);
+}
+
+.context-menu-item.disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+
+.context-menu-separator {
+  height: 1px;
+  background: var(--vscode-menu-separatorBackground, #454545);
+  margin: 4px 0;
+}

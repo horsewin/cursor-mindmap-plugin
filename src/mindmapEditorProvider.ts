@@ -36,6 +36,7 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
       enableScripts: true,
       localResourceRoots: [
         vscode.Uri.joinPath(this.context.extensionUri, 'media'),
+        vscode.Uri.joinPath(document.uri, '..'),
       ],
     };
 
@@ -116,10 +117,50 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
           }
           break;
         }
+        case 'saveImage': {
+          const docDir = vscode.Uri.joinPath(document.uri, '..');
+          const assetsDir = vscode.Uri.joinPath(docDir, 'assets');
+          try {
+            await vscode.workspace.fs.stat(assetsDir);
+          } catch {
+            await vscode.workspace.fs.createDirectory(assetsDir);
+          }
+          const fileName = message.fileName as string;
+          const fileUri = vscode.Uri.joinPath(assetsDir, fileName);
+          const base64Data = (message.base64 as string).replace(/^data:[^;]+;base64,/, '');
+          await vscode.workspace.fs.writeFile(fileUri, Buffer.from(base64Data, 'base64'));
+          const webviewUri = webviewPanel.webview.asWebviewUri(fileUri).toString();
+          webviewPanel.webview.postMessage({
+            type: 'imageReady',
+            nodeId: message.nodeId,
+            relativePath: `assets/${fileName}`,
+            webviewUri,
+          });
+          break;
+        }
+        case 'getImageUri': {
+          const docDir = vscode.Uri.joinPath(document.uri, '..');
+          const fileUri = vscode.Uri.joinPath(docDir, message.relativePath);
+          const webviewUri = webviewPanel.webview.asWebviewUri(fileUri).toString();
+          webviewPanel.webview.postMessage({
+            type: 'imageUriResolved',
+            relativePath: message.relativePath,
+            webviewUri,
+          });
+          break;
+        }
       }
     });
 
     updateWebview();
+
+    // Send document info for image resolution
+    const docDir = vscode.Uri.joinPath(document.uri, '..');
+    const assetsBaseUri = webviewPanel.webview.asWebviewUri(docDir).toString();
+    webviewPanel.webview.postMessage({
+      type: 'setDocumentInfo',
+      assetsBaseUri,
+    });
   }
 
   private getHtmlForWebview(webview: vscode.Webview): string {
@@ -136,7 +177,7 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+    content="default-src 'none'; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}'; img-src ${webview.cspSource};">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link href="${styleUri}" rel="stylesheet">
   <title>Mindmap Editor</title>
@@ -169,6 +210,15 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
     <div id="canvas-container">
       <svg id="mindmap-svg"></svg>
     </div>
+  </div>
+  <div id="context-menu" class="context-menu" style="display:none;">
+    <div class="context-menu-item" data-action="edit">Edit (F2)</div>
+    <div class="context-menu-item" data-action="add-child">+ Child (Tab)</div>
+    <div class="context-menu-item" data-action="add-sibling">+ Sibling (Cmd+Enter)</div>
+    <div class="context-menu-separator"></div>
+    <div class="context-menu-item" data-action="collapse">Collapse/Expand (Space)</div>
+    <div class="context-menu-separator"></div>
+    <div class="context-menu-item" data-action="delete">Delete</div>
   </div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>

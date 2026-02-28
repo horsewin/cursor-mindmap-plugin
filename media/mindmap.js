@@ -17,6 +17,9 @@
     '#4fc3f7', '#81c784', '#ffb74d', '#e57373',
     '#ba68c8', '#4dd0e1', '#aed581', '#ff8a65',
   ];
+  const IMAGE_THUMBNAIL_WIDTH = 120;
+  const IMAGE_THUMBNAIL_HEIGHT = 80;
+  const IMAGE_PADDING = 4;
 
   // ─── State ───────────────────────────────────────────────────
   let root = null;
@@ -32,10 +35,14 @@
   let dragStartX = 0;
   let dragStartY = 0;
   let dropTargetId = null;
+  let dropPosition = null;   // 'before' | 'after' | 'child'
+  let dragGhostEl = null;    // ドラッグゴーストHTML要素
   let isEditing = false;
   let suppressNextUpdate = false;
   let viewMode = 'split'; // 'split' | 'preview'
   let editorUpdateFromMindmap = false;
+  let assetsBaseUri = '';
+  const imageUriCache = {}; // relativePath -> webview URI
 
   // ─── DOM refs ────────────────────────────────────────────────
   const svg = document.getElementById('mindmap-svg');
@@ -150,6 +157,7 @@
     const lines = text.split('\n');
     let rootNode = null;
     const stack = []; // { node, indent }
+    let lastNode = null; // 直前のリスト項目ノード（画像検出用）
 
     for (const line of lines) {
       // Root heading
@@ -158,6 +166,14 @@
         rootNode = { id: generateId(), text: headingMatch[1].trim(), children: [] };
         stack.length = 0;
         stack.push({ node: rootNode, indent: -1 });
+        lastNode = null;
+        continue;
+      }
+
+      // Image line (must follow a list item)
+      const imageMatch = line.match(/^\s*!\[([^\]]*)\]\(([^)]+)\)/);
+      if (imageMatch && lastNode) {
+        lastNode.image = imageMatch[2];
         continue;
       }
 
@@ -175,6 +191,9 @@
         const parent = stack[stack.length - 1].node;
         parent.children.push(node);
         stack.push({ node, indent });
+        lastNode = node;
+      } else {
+        lastNode = null;
       }
     }
 
@@ -189,6 +208,9 @@
       for (const child of children) {
         const indent = '  '.repeat(depth);
         result += `${indent}- ${child.text}\n`;
+        if (child.image) {
+          result += `${indent}  ![](${child.image})\n`;
+        }
         if (child.children.length > 0) {
           serializeChildren(child.children, depth + 1);
         }
@@ -211,18 +233,27 @@
     return 13;
   }
 
-  function getNodeHeight(depth) {
-    return getFontSize(depth) + NODE_PADDING_Y * 2;
+  function getNodeHeight(depth, hasImage) {
+    const textHeight = getFontSize(depth) + NODE_PADDING_Y * 2;
+    if (hasImage) {
+      return textHeight + IMAGE_THUMBNAIL_HEIGHT + IMAGE_PADDING;
+    }
+    return textHeight;
   }
 
   function layoutTree(node, depth, branchIndex) {
     const fontSize = getFontSize(depth);
-    const width = Math.max(measureTextWidth(node.text, fontSize), 60);
-    const height = getNodeHeight(depth);
+    const hasImage = !!node.image;
+    let width = Math.max(measureTextWidth(node.text, fontSize), 60);
+    if (hasImage) {
+      width = Math.max(width, IMAGE_THUMBNAIL_WIDTH + NODE_PADDING_X * 2);
+    }
+    const height = getNodeHeight(depth, hasImage);
 
     const layoutNode = {
       id: node.id,
       text: node.text,
+      image: node.image || null,
       collapsed: node.collapsed || false,
       width,
       height,
@@ -314,6 +345,33 @@
     for (const node of allNodes) {
       drawNode(g, node);
     }
+
+    // Draw drop indicator for before/after
+    if (isDragging && dropTargetId && (dropPosition === 'before' || dropPosition === 'after')) {
+      const targetLayoutNode = allNodes.find(n => n.id === dropTargetId);
+      if (targetLayoutNode) {
+        const indicatorY = dropPosition === 'before'
+          ? targetLayoutNode.y - NODE_GAP_Y / 2
+          : targetLayoutNode.y + targetLayoutNode.height + NODE_GAP_Y / 2;
+        const x1 = targetLayoutNode.x;
+        const x2 = targetLayoutNode.x + targetLayoutNode.width;
+
+        const line = createSvgElement('line');
+        line.setAttribute('x1', String(x1));
+        line.setAttribute('y1', String(indicatorY));
+        line.setAttribute('x2', String(x2));
+        line.setAttribute('y2', String(indicatorY));
+        line.setAttribute('class', 'mm-drop-indicator-line');
+        g.appendChild(line);
+
+        const dot = createSvgElement('circle');
+        dot.setAttribute('cx', String(x1));
+        dot.setAttribute('cy', String(indicatorY));
+        dot.setAttribute('r', '4');
+        dot.setAttribute('class', 'mm-drop-indicator-dot');
+        g.appendChild(dot);
+      }
+    }
   }
 
   function drawConnection(parent, fromNode, toNode) {
@@ -390,8 +448,47 @@
       group.appendChild(indicatorGroup);
     }
 
-    // Drop target highlight
-    if (node.id === dropTargetId) {
+    // Image thumbnail
+    if (node.image) {
+      const textHeight = getFontSize(node.depth) + NODE_PADDING_Y * 2;
+      const imgX = (node.width - IMAGE_THUMBNAIL_WIDTH) / 2;
+      const imgY = textHeight + IMAGE_PADDING / 2;
+      const cachedUri = imageUriCache[node.image];
+      if (cachedUri) {
+        const img = createSvgElement('image');
+        img.setAttribute('href', cachedUri);
+        img.setAttribute('x', String(imgX));
+        img.setAttribute('y', String(imgY));
+        img.setAttribute('width', String(IMAGE_THUMBNAIL_WIDTH));
+        img.setAttribute('height', String(IMAGE_THUMBNAIL_HEIGHT));
+        img.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+        img.setAttribute('class', 'mm-node-image');
+        group.appendChild(img);
+      } else {
+        // Placeholder
+        const placeholder = createSvgElement('rect');
+        placeholder.setAttribute('x', String(imgX));
+        placeholder.setAttribute('y', String(imgY));
+        placeholder.setAttribute('width', String(IMAGE_THUMBNAIL_WIDTH));
+        placeholder.setAttribute('height', String(IMAGE_THUMBNAIL_HEIGHT));
+        placeholder.setAttribute('class', 'mm-image-placeholder');
+        placeholder.setAttribute('rx', '4');
+        group.appendChild(placeholder);
+        const placeholderText = createSvgElement('text');
+        placeholderText.setAttribute('x', String(node.width / 2));
+        placeholderText.setAttribute('y', String(imgY + IMAGE_THUMBNAIL_HEIGHT / 2));
+        placeholderText.setAttribute('text-anchor', 'middle');
+        placeholderText.setAttribute('dominant-baseline', 'central');
+        placeholderText.setAttribute('font-size', '10');
+        placeholderText.setAttribute('fill', 'var(--vscode-descriptionForeground, #888)');
+        placeholderText.textContent = 'Loading...';
+        group.appendChild(placeholderText);
+        requestImageUri(node.image);
+      }
+    }
+
+    // Drop target highlight (only for 'child' mode)
+    if (node.id === dropTargetId && dropPosition === 'child') {
       group.classList.add('mm-drop-target');
     }
 
@@ -569,6 +666,12 @@
     const svgNode = svg.querySelector(`g[data-id="${node.id}"]`);
     if (!svgNode) { isEditing = false; return; }
 
+    // Hide SVG text to prevent see-through while editing
+    const svgText = svgNode.querySelector('text');
+    if (svgText) {
+      svgText.style.visibility = 'hidden';
+    }
+
     const rect = svgNode.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
 
@@ -584,9 +687,16 @@
     input.focus();
     input.select();
 
+    const restoreSvgText = () => {
+      if (svgText) {
+        svgText.style.visibility = '';
+      }
+    };
+
     const finishEditing = () => {
       if (!isEditing) return;
       isEditing = false;
+      restoreSvgText();
       const newText = input.value.trim();
       if (newText && newText !== node.text) {
         node.text = newText;
@@ -606,6 +716,7 @@
         finishEditing();
       } else if (e.key === 'Escape') {
         isEditing = false;
+        restoreSvgText();
         if (input.parentNode) {
           input.parentNode.removeChild(input);
         }
@@ -645,14 +756,41 @@
       const dy = e.clientY - dragStartY;
       if (!isDragging && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
         isDragging = true;
+        const dragNode = findNode(root, dragNodeId);
+        if (dragNode) {
+          createDragGhost(dragNode.text, e.clientX, e.clientY);
+        }
       }
       if (isDragging) {
+        updateDragGhost(e.clientX, e.clientY);
+
         // Find node under cursor
         const target = findNodeAtPoint(e.clientX, e.clientY);
         if (target && target !== dragNodeId && !isDescendant(dragNodeId, target)) {
           dropTargetId = target;
+
+          // Determine drop position based on cursor Y within target node
+          const targetEl = svg.querySelector(`g.mm-node[data-id="${target}"]`);
+          const targetDataNode = findNode(root, target);
+          if (targetEl && targetDataNode) {
+            // Root node always gets 'child'
+            if (target === root.id) {
+              dropPosition = 'child';
+            } else {
+              const rect = targetEl.getBoundingClientRect();
+              const relY = (e.clientY - rect.top) / rect.height;
+              if (relY < 0.3) {
+                dropPosition = 'before';
+              } else if (relY > 0.7) {
+                dropPosition = 'after';
+              } else {
+                dropPosition = 'child';
+              }
+            }
+          }
         } else {
           dropTargetId = null;
+          dropPosition = null;
         }
         render();
       }
@@ -668,25 +806,70 @@
   }
 
   function onMouseUp() {
-    if (isDragging && dragNodeId && dropTargetId && root) {
-      // Move node
+    if (isDragging && dragNodeId && dropTargetId && dropPosition && root) {
       const parent = findParent(root, dragNodeId);
-      const targetNode = findNode(root, dropTargetId);
-      if (parent && targetNode) {
+      if (parent) {
         const index = parent.children.findIndex((c) => c.id === dragNodeId);
         const [movedNode] = parent.children.splice(index, 1);
-        targetNode.children.push(movedNode);
-        targetNode.collapsed = false;
+
+        if (dropPosition === 'child') {
+          // Add as child of target
+          const targetNode = findNode(root, dropTargetId);
+          if (targetNode) {
+            targetNode.children.push(movedNode);
+            targetNode.collapsed = false;
+          }
+        } else {
+          // Insert before or after target as sibling
+          const targetParent = findParent(root, dropTargetId);
+          const insertParent = targetParent || root; // fallback to root
+          const targetIndex = insertParent.children.findIndex((c) => c.id === dropTargetId);
+          if (targetIndex !== -1) {
+            const insertIndex = dropPosition === 'before' ? targetIndex : targetIndex + 1;
+            insertParent.children.splice(insertIndex, 0, movedNode);
+          } else {
+            // Fallback: add as child
+            insertParent.children.push(movedNode);
+          }
+        }
+
         selectedNodeId = movedNode.id;
         saveAndRender();
       }
     }
 
+    removeDragGhost();
     dragNodeId = null;
     isDragging = false;
     dropTargetId = null;
+    dropPosition = null;
     isPanning = false;
     container.classList.remove('panning');
+  }
+
+  // ─── Drag Ghost ──────────────────────────────────────────────
+  function createDragGhost(text, clientX, clientY) {
+    removeDragGhost();
+    dragGhostEl = document.createElement('div');
+    dragGhostEl.className = 'mm-drag-ghost-overlay';
+    dragGhostEl.textContent = text;
+    dragGhostEl.style.left = `${clientX}px`;
+    dragGhostEl.style.top = `${clientY}px`;
+    document.body.appendChild(dragGhostEl);
+  }
+
+  function updateDragGhost(clientX, clientY) {
+    if (dragGhostEl) {
+      dragGhostEl.style.left = `${clientX}px`;
+      dragGhostEl.style.top = `${clientY}px`;
+    }
+  }
+
+  function removeDragGhost() {
+    if (dragGhostEl) {
+      dragGhostEl.remove();
+      dragGhostEl = null;
+    }
   }
 
   function findNodeAtPoint(clientX, clientY) {
@@ -924,6 +1107,126 @@
   document.addEventListener('mouseup', onMouseUp);
   container.addEventListener('wheel', onWheel, { passive: false });
 
+  // ─── Image Paste ────────────────────────────────────────────────
+  function requestImageUri(relativePath) {
+    if (imageUriCache[relativePath]) return;
+    vscode.postMessage({ type: 'getImageUri', relativePath });
+  }
+
+  document.addEventListener('paste', (e) => {
+    // Skip if editing markdown or inline editing
+    if (isEditing || document.activeElement === markdownEditor) return;
+    // Skip if no node selected
+    if (!selectedNodeId || !root) return;
+
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) return;
+
+        const ext = item.type.split('/')[1] || 'png';
+        const fileName = `${Date.now()}-${Math.random().toString(36).substr(2, 6)}.${ext}`;
+
+        const reader = new FileReader();
+        reader.onload = () => {
+          vscode.postMessage({
+            type: 'saveImage',
+            nodeId: selectedNodeId,
+            base64: reader.result,
+            fileName,
+          });
+        };
+        reader.readAsDataURL(file);
+        return; // 1回のペーストで1画像のみ
+      }
+    }
+  });
+
+  // ─── Context Menu ──────────────────────────────────────────────
+  const contextMenu = document.getElementById('context-menu');
+
+  function showContextMenu(x, y, hasNode) {
+    const items = contextMenu.querySelectorAll('.context-menu-item');
+    items.forEach((item) => {
+      const action = item.getAttribute('data-action');
+      if (['edit', 'add-child', 'add-sibling', 'collapse', 'delete'].includes(action)) {
+        item.classList.toggle('disabled', !hasNode);
+      }
+    });
+
+    contextMenu.style.display = 'block';
+    contextMenu.style.left = `${x}px`;
+    contextMenu.style.top = `${y}px`;
+
+    // Adjust if menu goes off-screen
+    const menuRect = contextMenu.getBoundingClientRect();
+    if (menuRect.right > window.innerWidth) {
+      contextMenu.style.left = `${x - menuRect.width}px`;
+    }
+    if (menuRect.bottom > window.innerHeight) {
+      contextMenu.style.top = `${y - menuRect.height}px`;
+    }
+  }
+
+  function hideContextMenu() {
+    contextMenu.style.display = 'none';
+  }
+
+  container.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    hideContextMenu();
+
+    const nodeId = findNodeAtPoint(e.clientX, e.clientY);
+    if (nodeId) {
+      selectNode(nodeId);
+    }
+
+    showContextMenu(e.clientX, e.clientY, !!nodeId);
+  });
+
+  contextMenu.addEventListener('click', (e) => {
+    const item = e.target.closest('.context-menu-item');
+    if (!item || item.classList.contains('disabled')) return;
+
+    const action = item.getAttribute('data-action');
+    hideContextMenu();
+
+    switch (action) {
+      case 'edit':
+        if (selectedNodeId) startEditing({ id: selectedNodeId });
+        break;
+      case 'add-child':
+        addChild();
+        break;
+      case 'add-sibling':
+        addSibling();
+        break;
+      case 'collapse':
+        toggleCollapse();
+        break;
+      case 'delete':
+        deleteNode();
+        break;
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!contextMenu.contains(e.target)) {
+      hideContextMenu();
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && contextMenu.style.display !== 'none') {
+      hideContextMenu();
+    }
+  }, true);
+
   // ─── VS Code Messaging ────────────────────────────────────────
   window.addEventListener('message', (event) => {
     const message = event.data;
@@ -952,12 +1255,32 @@
       case 'exportMarkdown':
         exportMarkdown();
         break;
+      case 'setDocumentInfo':
+        assetsBaseUri = message.assetsBaseUri || '';
+        break;
+      case 'imageReady': {
+        // Image saved: update node data and URI cache
+        const node = findNode(root, message.nodeId);
+        if (node) {
+          node.image = message.relativePath;
+        }
+        imageUriCache[message.relativePath] = message.webviewUri;
+        saveAndRender();
+        break;
+      }
+      case 'imageUriResolved':
+        imageUriCache[message.relativePath] = message.webviewUri;
+        render();
+        break;
     }
   });
 
   function preserveCollapsedState(oldNode, newNode) {
     // Match by position in tree since IDs are regenerated on parse
     newNode.collapsed = oldNode.collapsed || false;
+    if (oldNode.image) {
+      newNode.image = oldNode.image;
+    }
     const minLen = Math.min(oldNode.children.length, newNode.children.length);
     for (let i = 0; i < minLen; i++) {
       preserveCollapsedState(oldNode.children[i], newNode.children[i]);
