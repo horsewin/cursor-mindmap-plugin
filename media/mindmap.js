@@ -5,11 +5,18 @@
   /** @type {typeof acquireVsCodeApi} */
   const vscode = acquireVsCodeApi();
 
-  // ─── Constants ───────────────────────────────────────────────
-  const NODE_GAP_X = 60;
-  const NODE_GAP_Y = 16;
-  const NODE_PADDING_X = 16;
-  const NODE_PADDING_Y = 8;
+  // ─── Core module (pure logic) ───────────────────────────────
+  const {
+    NODE_GAP_X, NODE_GAP_Y, NODE_PADDING_X, NODE_PADDING_Y,
+    IMAGE_THUMBNAIL_WIDTH, IMAGE_THUMBNAIL_HEIGHT, IMAGE_PADDING,
+    MAX_NODE_WIDTH, LINE_HEIGHT_RATIO,
+    generateId, parseMarkdown, serializeToMarkdown,
+    measureTextWidth, wrapText, getFontSize, getNodeHeight,
+    layoutTree, computeSubtreeHeight, positionNodes,
+    preserveCollapsedState,
+  } = MindmapCore;
+
+  // ─── Constants (UI-only) ────────────────────────────────────
   const MIN_ZOOM = 0.2;
   const MAX_ZOOM = 3.0;
   const ZOOM_STEP = 0.1;
@@ -17,9 +24,6 @@
     '#4fc3f7', '#81c784', '#ffb74d', '#e57373',
     '#ba68c8', '#4dd0e1', '#aed581', '#ff8a65',
   ];
-  const IMAGE_THUMBNAIL_WIDTH = 120;
-  const IMAGE_THUMBNAIL_HEIGHT = 80;
-  const IMAGE_PADDING = 4;
 
   // ─── State ───────────────────────────────────────────────────
   let root = null;
@@ -148,173 +152,6 @@
     editorUpdateFromMindmap = false;
   }
 
-  // ─── Markdown Parser ─────────────────────────────────────────
-  function generateId() {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
-  }
-
-  function parseMarkdown(text) {
-    const lines = text.split('\n');
-    let rootNode = null;
-    const stack = []; // { node, indent }
-    let lastNode = null; // 直前のリスト項目ノード（画像検出用）
-
-    for (const line of lines) {
-      // Root heading
-      const headingMatch = line.match(/^#\s+(.+)/);
-      if (headingMatch) {
-        rootNode = { id: generateId(), text: headingMatch[1].trim(), children: [] };
-        stack.length = 0;
-        stack.push({ node: rootNode, indent: -1 });
-        lastNode = null;
-        continue;
-      }
-
-      // Image line (must follow a list item)
-      // Supports optional size: ![](path =WxH)
-      const imageMatch = line.match(/^\s*!\[([^\]]*)\]\(([^)\s]+)(?:\s*=(\d+)x(\d+))?\)/);
-      if (imageMatch && lastNode) {
-        lastNode.image = imageMatch[2];
-        if (imageMatch[3]) {
-          lastNode.imageWidth = parseInt(imageMatch[3]);
-        }
-        if (imageMatch[4]) {
-          lastNode.imageHeight = parseInt(imageMatch[4]);
-        }
-        continue;
-      }
-
-      // List item
-      const listMatch = line.match(/^(\s*)- (.+)/);
-      if (listMatch && rootNode) {
-        const indent = listMatch[1].length;
-        const node = { id: generateId(), text: listMatch[2].trim(), children: [] };
-
-        // Find parent: go back in stack until we find a node with smaller indent
-        while (stack.length > 1 && stack[stack.length - 1].indent >= indent) {
-          stack.pop();
-        }
-
-        const parent = stack[stack.length - 1].node;
-        parent.children.push(node);
-        stack.push({ node, indent });
-        lastNode = node;
-      } else {
-        lastNode = null;
-      }
-    }
-
-    return rootNode || { id: generateId(), text: 'Central Topic', children: [] };
-  }
-
-  // ─── Markdown Serializer ──────────────────────────────────────
-  function serializeToMarkdown(node) {
-    let result = `# ${node.text}\n`;
-
-    function serializeChildren(children, depth) {
-      for (const child of children) {
-        const indent = '  '.repeat(depth);
-        result += `${indent}- ${child.text}\n`;
-        if (child.image) {
-          const sizeStr = (child.imageWidth && child.imageHeight) ? ` =${child.imageWidth}x${child.imageHeight}` : '';
-          result += `${indent}  ![](${child.image}${sizeStr})\n`;
-        }
-        if (child.children.length > 0) {
-          serializeChildren(child.children, depth + 1);
-        }
-      }
-    }
-
-    serializeChildren(node.children, 0);
-    return result;
-  }
-
-  // ─── Layout Algorithm ─────────────────────────────────────────
-  function measureTextWidth(text, fontSize) {
-    // Approximate character width ratio
-    return text.length * fontSize * 0.6 + NODE_PADDING_X * 2;
-  }
-
-  function getFontSize(depth) {
-    if (depth === 0) return 16;
-    if (depth === 1) return 14;
-    return 13;
-  }
-
-  function getNodeHeight(depth, imgHeight) {
-    const textHeight = getFontSize(depth) + NODE_PADDING_Y * 2;
-    if (imgHeight > 0) {
-      return textHeight + imgHeight + IMAGE_PADDING;
-    }
-    return textHeight;
-  }
-
-  function layoutTree(node, depth, branchIndex) {
-    const fontSize = getFontSize(depth);
-    const hasImage = !!node.image;
-    const imgW = node.imageWidth || IMAGE_THUMBNAIL_WIDTH;
-    const imgH = node.imageHeight || IMAGE_THUMBNAIL_HEIGHT;
-    let width = Math.max(measureTextWidth(node.text, fontSize), 60);
-    if (hasImage) {
-      width = Math.max(width, imgW + NODE_PADDING_X * 2);
-    }
-    const height = getNodeHeight(depth, hasImage ? imgH : 0);
-
-    const layoutNode = {
-      id: node.id,
-      text: node.text,
-      image: node.image || null,
-      imageWidth: node.imageWidth || null,
-      imageHeight: node.imageHeight || null,
-      collapsed: node.collapsed || false,
-      width,
-      height,
-      x: 0,
-      y: 0,
-      depth,
-      branchIndex,
-      children: [],
-      hasChildren: node.children.length > 0,
-    };
-
-    if (!node.collapsed && node.children.length > 0) {
-      layoutNode.children = node.children.map((child, i) => {
-        const bi = depth === 0 ? i : branchIndex;
-        return layoutTree(child, depth + 1, bi);
-      });
-    }
-
-    return layoutNode;
-  }
-
-  function computeSubtreeHeight(layoutNode) {
-    if (layoutNode.children.length === 0) {
-      return layoutNode.height;
-    }
-    let totalHeight = 0;
-    for (const child of layoutNode.children) {
-      totalHeight += computeSubtreeHeight(child);
-    }
-    totalHeight += (layoutNode.children.length - 1) * NODE_GAP_Y;
-    return Math.max(layoutNode.height, totalHeight);
-  }
-
-  function positionNodes(layoutNode, x, y) {
-    const subtreeHeight = computeSubtreeHeight(layoutNode);
-    layoutNode.x = x;
-    layoutNode.y = y + subtreeHeight / 2 - layoutNode.height / 2;
-
-    if (layoutNode.children.length > 0) {
-      const childX = x + layoutNode.width + NODE_GAP_X;
-      let childY = y;
-      for (const child of layoutNode.children) {
-        const childSubtreeHeight = computeSubtreeHeight(child);
-        positionNodes(child, childX, childY);
-        childY += childSubtreeHeight + NODE_GAP_Y;
-      }
-    }
-  }
-
   // ─── Rendering ────────────────────────────────────────────────
   function flattenLayout(layoutNode, list) {
     list = list || [];
@@ -419,16 +256,25 @@
     rect.setAttribute('opacity', String(opacity));
     group.appendChild(rect);
 
-    // Text
-    const textAreaHeight = getFontSize(node.depth) + NODE_PADDING_Y * 2;
+    // Text (multi-line with tspan)
+    const fontSize = getFontSize(node.depth);
+    const lineHeight = fontSize * LINE_HEIGHT_RATIO;
+    const textLines = node.textLines || [node.text];
+    const textBlockHeight = textLines.length * lineHeight + NODE_PADDING_Y * 2;
     const text = createSvgElement('text');
     text.setAttribute('x', String(node.width / 2));
-    text.setAttribute('y', String(textAreaHeight / 2));
     text.setAttribute('text-anchor', 'middle');
-    text.setAttribute('dominant-baseline', 'central');
-    text.setAttribute('font-size', String(getFontSize(node.depth)));
+    text.setAttribute('font-size', String(fontSize));
     text.setAttribute('fill', node.depth === 0 ? '#1e1e1e' : 'var(--vscode-editor-foreground, #cccccc)');
-    text.textContent = node.text;
+    const startY = NODE_PADDING_Y + lineHeight / 2;
+    for (let i = 0; i < textLines.length; i++) {
+      const tspan = createSvgElement('tspan');
+      tspan.setAttribute('x', String(node.width / 2));
+      tspan.setAttribute('y', String(startY + i * lineHeight));
+      tspan.setAttribute('dominant-baseline', 'central');
+      tspan.textContent = textLines[i];
+      text.appendChild(tspan);
+    }
     group.appendChild(text);
 
     // Collapse indicator
@@ -465,9 +311,8 @@
     if (node.image) {
       const imgW = node.imageWidth || IMAGE_THUMBNAIL_WIDTH;
       const imgH = node.imageHeight || IMAGE_THUMBNAIL_HEIGHT;
-      const textHeight = getFontSize(node.depth) + NODE_PADDING_Y * 2;
       const imgX = (node.width - imgW) / 2;
-      const imgY = textHeight + IMAGE_PADDING / 2;
+      const imgY = textBlockHeight + IMAGE_PADDING / 2;
       const cachedUri = imageUriCache[node.image];
       if (cachedUri) {
         const img = createSvgElement('image');
@@ -1290,21 +1135,4 @@
     }
   });
 
-  function preserveCollapsedState(oldNode, newNode) {
-    // Match by position in tree since IDs are regenerated on parse
-    newNode.collapsed = oldNode.collapsed || false;
-    if (oldNode.image) {
-      newNode.image = oldNode.image;
-    }
-    if (oldNode.imageWidth) {
-      newNode.imageWidth = oldNode.imageWidth;
-    }
-    if (oldNode.imageHeight) {
-      newNode.imageHeight = oldNode.imageHeight;
-    }
-    const minLen = Math.min(oldNode.children.length, newNode.children.length);
-    for (let i = 0; i < minLen; i++) {
-      preserveCollapsedState(oldNode.children[i], newNode.children[i]);
-    }
-  }
 })();

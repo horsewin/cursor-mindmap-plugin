@@ -164,6 +164,9 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
   }
 
   private getHtmlForWebview(webview: vscode.Webview): string {
+    const coreScriptUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'media', 'mindmap-core.js')
+    );
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'media', 'mindmap.js')
     );
@@ -220,6 +223,7 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
     <div class="context-menu-separator"></div>
     <div class="context-menu-item" data-action="delete">Delete</div>
   </div>
+  <script nonce="${nonce}" src="${coreScriptUri}"></script>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
