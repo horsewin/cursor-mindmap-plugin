@@ -4,6 +4,10 @@
   "description": "Visual mindmap editor for *.mindmap.md files",
   "version": "0.1.1",
   "publisher": "cursor-mindmap",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/horsewin/cursor-mindmap-plugin"
+  },
   "engines": {
     "vscode": "^1.80.0"
   },
