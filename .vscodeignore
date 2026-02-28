@@ -2,7 +2,9 @@
 .vscode-test/**
 .claude/**
 .git/**
+.github/**
 src/**
+test/**
 node_modules/**
 examples/**
 tsconfig.json

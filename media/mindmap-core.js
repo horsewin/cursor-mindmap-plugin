@@ -135,22 +135,41 @@
   }
 
   // ─── Layout Utilities ───────────────────────────────────────
+  function isFullWidth(ch) {
+    const code = ch.charCodeAt(0);
+    return (code >= 0x3000 && code <= 0x9FFF) ||  // CJK Unified, Hiragana, Katakana, etc.
+           (code >= 0xF900 && code <= 0xFAFF) ||  // CJK Compatibility Ideographs
+           (code >= 0xFF01 && code <= 0xFF60) ||  // Fullwidth Forms
+           (code >= 0xFFE0 && code <= 0xFFE6) ||  // Fullwidth Signs
+           (code >= 0xAC00 && code <= 0xD7AF);    // Hangul Syllables
+  }
+
   function measureTextWidth(text, fontSize) {
-    return text.length * fontSize * 0.6 + NODE_PADDING_X * 2;
+    let width = 0;
+    for (const ch of text) {
+      width += isFullWidth(ch) ? fontSize : fontSize * 0.6;
+    }
+    return width + NODE_PADDING_X * 2;
   }
 
   function wrapText(text, fontSize, maxWidth) {
-    const charWidth = fontSize * 0.6;
     const availableWidth = maxWidth - NODE_PADDING_X * 2;
-    const charsPerLine = Math.max(1, Math.floor(availableWidth / charWidth));
     const lines = [];
-    let remaining = text;
-    while (remaining.length > charsPerLine) {
-      lines.push(remaining.substring(0, charsPerLine));
-      remaining = remaining.substring(charsPerLine);
+    let currentLine = '';
+    let currentWidth = 0;
+    for (const ch of text) {
+      const charWidth = isFullWidth(ch) ? fontSize : fontSize * 0.6;
+      if (currentWidth + charWidth > availableWidth && currentLine.length > 0) {
+        lines.push(currentLine);
+        currentLine = ch;
+        currentWidth = charWidth;
+      } else {
+        currentLine += ch;
+        currentWidth += charWidth;
+      }
     }
-    if (remaining.length > 0) {
-      lines.push(remaining);
+    if (currentLine.length > 0) {
+      lines.push(currentLine);
     }
     return lines;
   }

@@ -886,9 +886,36 @@
   btnPreview.addEventListener('click', () => setViewMode('preview'));
 
   // Keyboard shortcuts
+  const PAN_STEP = 60;
   document.addEventListener('keydown', (e) => {
     // Don't intercept keys when editing markdown textarea
     if (isEditing || document.activeElement === markdownEditor) return;
+
+    // Preview mode: arrow keys and hjkl pan the view
+    if (viewMode === 'preview') {
+      let handled = true;
+      switch (e.key) {
+        case 'ArrowUp': case 'k':
+          panY += PAN_STEP;
+          break;
+        case 'ArrowDown': case 'j':
+          panY -= PAN_STEP;
+          break;
+        case 'ArrowLeft': case 'h':
+          panX += PAN_STEP;
+          break;
+        case 'ArrowRight': case 'l':
+          panX -= PAN_STEP;
+          break;
+        default:
+          handled = false;
+      }
+      if (handled) {
+        e.preventDefault();
+        render();
+        return;
+      }
+    }
 
     switch (e.key) {
       case 'Tab':
