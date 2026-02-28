@@ -171,9 +171,16 @@
       }
 
       // Image line (must follow a list item)
-      const imageMatch = line.match(/^\s*!\[([^\]]*)\]\(([^)]+)\)/);
+      // Supports optional size: ![](path =WxH)
+      const imageMatch = line.match(/^\s*!\[([^\]]*)\]\(([^)\s]+)(?:\s*=(\d+)x(\d+))?\)/);
       if (imageMatch && lastNode) {
         lastNode.image = imageMatch[2];
+        if (imageMatch[3]) {
+          lastNode.imageWidth = parseInt(imageMatch[3]);
+        }
+        if (imageMatch[4]) {
+          lastNode.imageHeight = parseInt(imageMatch[4]);
+        }
         continue;
       }
 
@@ -209,7 +216,8 @@
         const indent = '  '.repeat(depth);
         result += `${indent}- ${child.text}\n`;
         if (child.image) {
-          result += `${indent}  ![](${child.image})\n`;
+          const sizeStr = (child.imageWidth && child.imageHeight) ? ` =${child.imageWidth}x${child.imageHeight}` : '';
+          result += `${indent}  ![](${child.image}${sizeStr})\n`;
         }
         if (child.children.length > 0) {
           serializeChildren(child.children, depth + 1);
@@ -233,10 +241,10 @@
     return 13;
   }
 
-  function getNodeHeight(depth, hasImage) {
+  function getNodeHeight(depth, imgHeight) {
     const textHeight = getFontSize(depth) + NODE_PADDING_Y * 2;
-    if (hasImage) {
-      return textHeight + IMAGE_THUMBNAIL_HEIGHT + IMAGE_PADDING;
+    if (imgHeight > 0) {
+      return textHeight + imgHeight + IMAGE_PADDING;
     }
     return textHeight;
   }
@@ -244,16 +252,20 @@
   function layoutTree(node, depth, branchIndex) {
     const fontSize = getFontSize(depth);
     const hasImage = !!node.image;
+    const imgW = node.imageWidth || IMAGE_THUMBNAIL_WIDTH;
+    const imgH = node.imageHeight || IMAGE_THUMBNAIL_HEIGHT;
     let width = Math.max(measureTextWidth(node.text, fontSize), 60);
     if (hasImage) {
-      width = Math.max(width, IMAGE_THUMBNAIL_WIDTH + NODE_PADDING_X * 2);
+      width = Math.max(width, imgW + NODE_PADDING_X * 2);
     }
-    const height = getNodeHeight(depth, hasImage);
+    const height = getNodeHeight(depth, hasImage ? imgH : 0);
 
     const layoutNode = {
       id: node.id,
       text: node.text,
       image: node.image || null,
+      imageWidth: node.imageWidth || null,
+      imageHeight: node.imageHeight || null,
       collapsed: node.collapsed || false,
       width,
       height,
@@ -451,8 +463,10 @@
 
     // Image thumbnail
     if (node.image) {
+      const imgW = node.imageWidth || IMAGE_THUMBNAIL_WIDTH;
+      const imgH = node.imageHeight || IMAGE_THUMBNAIL_HEIGHT;
       const textHeight = getFontSize(node.depth) + NODE_PADDING_Y * 2;
-      const imgX = (node.width - IMAGE_THUMBNAIL_WIDTH) / 2;
+      const imgX = (node.width - imgW) / 2;
       const imgY = textHeight + IMAGE_PADDING / 2;
       const cachedUri = imageUriCache[node.image];
       if (cachedUri) {
@@ -460,8 +474,8 @@
         img.setAttribute('href', cachedUri);
         img.setAttribute('x', String(imgX));
         img.setAttribute('y', String(imgY));
-        img.setAttribute('width', String(IMAGE_THUMBNAIL_WIDTH));
-        img.setAttribute('height', String(IMAGE_THUMBNAIL_HEIGHT));
+        img.setAttribute('width', String(imgW));
+        img.setAttribute('height', String(imgH));
         img.setAttribute('preserveAspectRatio', 'xMidYMid meet');
         img.setAttribute('class', 'mm-node-image');
         group.appendChild(img);
@@ -470,14 +484,14 @@
         const placeholder = createSvgElement('rect');
         placeholder.setAttribute('x', String(imgX));
         placeholder.setAttribute('y', String(imgY));
-        placeholder.setAttribute('width', String(IMAGE_THUMBNAIL_WIDTH));
-        placeholder.setAttribute('height', String(IMAGE_THUMBNAIL_HEIGHT));
+        placeholder.setAttribute('width', String(imgW));
+        placeholder.setAttribute('height', String(imgH));
         placeholder.setAttribute('class', 'mm-image-placeholder');
         placeholder.setAttribute('rx', '4');
         group.appendChild(placeholder);
         const placeholderText = createSvgElement('text');
         placeholderText.setAttribute('x', String(node.width / 2));
-        placeholderText.setAttribute('y', String(imgY + IMAGE_THUMBNAIL_HEIGHT / 2));
+        placeholderText.setAttribute('y', String(imgY + imgH / 2));
         placeholderText.setAttribute('text-anchor', 'middle');
         placeholderText.setAttribute('dominant-baseline', 'central');
         placeholderText.setAttribute('font-size', '10');
@@ -1281,6 +1295,12 @@
     newNode.collapsed = oldNode.collapsed || false;
     if (oldNode.image) {
       newNode.image = oldNode.image;
+    }
+    if (oldNode.imageWidth) {
+      newNode.imageWidth = oldNode.imageWidth;
+    }
+    if (oldNode.imageHeight) {
+      newNode.imageHeight = oldNode.imageHeight;
     }
     const minLen = Math.min(oldNode.children.length, newNode.children.length);
     for (let i = 0; i < minLen; i++) {
