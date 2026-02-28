@@ -46,6 +46,11 @@
         "title": "Mindmap: Export as Markdown"
       }
     ],
+    "configurationDefaults": {
+      "workbench.editorAssociations": {
+        "*.mindmap.md": "cursorMindmap.mindmapEditor"
+      }
+    },
     "languages": [
       {
         "id": "mindmap",
