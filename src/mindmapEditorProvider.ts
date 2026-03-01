@@ -203,6 +203,7 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
       <button id="btn-split" class="active" title="Split View (Markdown + Mindmap)">Split</button>
       <button id="btn-preview" title="Mindmap Only">Preview</button>
     </div>
+    <button id="btn-lock" title="Lock (prevent editing)">Lock</button>
     <span class="node-count" id="node-count"></span>
   </div>
   <div id="main-content" class="mode-split">
@@ -223,7 +224,10 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
       </div>
       <div id="editor-wrapper">
         <div id="line-numbers" aria-hidden="true"></div>
-        <textarea id="markdown-editor" spellcheck="false"></textarea>
+        <div id="editor-highlight-area">
+          <div id="highlight-backdrop" aria-hidden="true"></div>
+          <textarea id="markdown-editor" spellcheck="false"></textarea>
+        </div>
       </div>
     </div>
     <div id="divider"></div>

@@ -42,6 +42,7 @@
   let dropPosition = null;   // 'before' | 'after' | 'child'
   let dragGhostEl = null;    // ドラッグゴーストHTML要素
   let isEditing = false;
+  let isLocked = false;
   let suppressNextUpdate = false;
   let viewMode = 'split'; // 'split' | 'preview'
   let editorUpdateFromMindmap = false;
@@ -55,6 +56,7 @@
   const mainContent = document.getElementById('main-content');
   const markdownPane = document.getElementById('markdown-pane');
   const markdownEditor = document.getElementById('markdown-editor');
+  const highlightBackdrop = document.getElementById('highlight-backdrop');
   const lineNumbers = document.getElementById('line-numbers');
   const divider = document.getElementById('divider');
   const btnSplit = document.getElementById('btn-split');
@@ -184,6 +186,8 @@
 
   markdownEditor.addEventListener('scroll', () => {
     lineNumbers.scrollTop = markdownEditor.scrollTop;
+    highlightBackdrop.scrollTop = markdownEditor.scrollTop;
+    highlightBackdrop.scrollLeft = markdownEditor.scrollLeft;
   });
 
   markdownEditor.addEventListener('input', updateLineNumbers);
@@ -208,7 +212,36 @@
     searchMatches = [];
     searchIndex = -1;
     searchCountEl.textContent = '';
+    highlightBackdrop.innerHTML = '';
     markdownEditor.focus();
+  }
+
+  function updateHighlight() {
+    const query = searchInput.value;
+    const text = markdownEditor.value;
+    if (!query || searchMatches.length === 0) {
+      highlightBackdrop.innerHTML = '';
+      return;
+    }
+    let html = '';
+    let lastEnd = 0;
+    for (let i = 0; i < searchMatches.length; i++) {
+      const pos = searchMatches[i];
+      // Escape HTML for text between matches
+      html += escapeHtml(text.substring(lastEnd, pos));
+      const cls = i === searchIndex ? 'current' : '';
+      html += `<mark class="${cls}">` + escapeHtml(text.substring(pos, pos + query.length)) + '</mark>';
+      lastEnd = pos + query.length;
+    }
+    html += escapeHtml(text.substring(lastEnd));
+    highlightBackdrop.innerHTML = html;
+    // Sync scroll
+    highlightBackdrop.scrollTop = markdownEditor.scrollTop;
+    highlightBackdrop.scrollLeft = markdownEditor.scrollLeft;
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
   function runSearch() {
@@ -217,6 +250,7 @@
     searchIndex = -1;
     if (!query) {
       searchCountEl.textContent = '';
+      highlightBackdrop.innerHTML = '';
       return;
     }
     const text = markdownEditor.value;
@@ -231,7 +265,20 @@
     if (searchMatches.length > 0) {
       searchIndex = 0;
       selectMatch();
+    } else {
+      updateHighlight();
     }
+  }
+
+  function scrollToMatch() {
+    if (searchIndex < 0 || searchIndex >= searchMatches.length) return;
+    const pos = searchMatches[searchIndex];
+    const textBefore = markdownEditor.value.substring(0, pos);
+    const lineNum = textBefore.split('\n').length - 1;
+    const lineHeight = parseFloat(getComputedStyle(markdownEditor).lineHeight) || 20;
+    const editorHeight = markdownEditor.clientHeight;
+    const targetScroll = lineNum * lineHeight - editorHeight / 2 + lineHeight;
+    markdownEditor.scrollTop = Math.max(0, targetScroll);
   }
 
   function selectMatch() {
@@ -241,24 +288,20 @@
     markdownEditor.selectionStart = pos;
     markdownEditor.selectionEnd = pos + len;
     searchCountEl.textContent = `${searchIndex + 1}/${searchMatches.length}`;
-  }
-
-  function navigateMatch() {
-    if (searchIndex < 0 || searchIndex >= searchMatches.length) return;
-    markdownEditor.focus();
-    selectMatch();
+    scrollToMatch();
+    updateHighlight();
   }
 
   function searchNext() {
     if (searchMatches.length === 0) return;
     searchIndex = (searchIndex + 1) % searchMatches.length;
-    navigateMatch();
+    selectMatch();
   }
 
   function searchPrev() {
     if (searchMatches.length === 0) return;
     searchIndex = (searchIndex - 1 + searchMatches.length) % searchMatches.length;
-    navigateMatch();
+    selectMatch();
   }
 
   function replaceOne() {
@@ -272,7 +315,7 @@
     runSearch();
     if (searchMatches.length > 0) {
       searchIndex = Math.min(searchIndex, searchMatches.length - 1);
-      highlightMatch();
+      selectMatch();
     }
   }
 
@@ -573,7 +616,7 @@
   }
 
   function addChild() {
-    if (!selectedNodeId || !root) return;
+    if (isLocked || !selectedNodeId || !root) return;
     const parent = findNode(root, selectedNodeId);
     if (!parent) return;
     parent.collapsed = false;
@@ -585,7 +628,7 @@
   }
 
   function addSibling() {
-    if (!selectedNodeId || !root) return;
+    if (isLocked || !selectedNodeId || !root) return;
     if (selectedNodeId === root.id) return; // Can't add sibling to root
     const parent = findParent(root, selectedNodeId);
     if (!parent) return;
@@ -598,7 +641,7 @@
   }
 
   function deleteNode() {
-    if (!selectedNodeId || !root) return;
+    if (isLocked || !selectedNodeId || !root) return;
     if (selectedNodeId === root.id) return; // Can't delete root
     const parent = findParent(root, selectedNodeId);
     if (!parent) return;
@@ -670,7 +713,7 @@
 
   // ─── Inline Editing ───────────────────────────────────────────
   function startEditing(layoutNode) {
-    if (isEditing) return;
+    if (isEditing || isLocked) return;
     isEditing = true;
 
     const node = findNode(root, layoutNode.id);
@@ -758,6 +801,7 @@
 
   function onNodeMouseDown(e, node) {
     if (e.button !== 0 || isEditing) return;
+    if (isLocked) return;
     if (node.id === root.id) return; // Can't drag root
 
     dragNodeId = node.id;
@@ -1040,6 +1084,14 @@
   // View mode toggle
   btnSplit.addEventListener('click', () => setViewMode('split'));
   btnPreview.addEventListener('click', () => setViewMode('preview'));
+
+  // Lock toggle
+  const btnLock = document.getElementById('btn-lock');
+  btnLock.addEventListener('click', () => {
+    isLocked = !isLocked;
+    btnLock.classList.toggle('active', isLocked);
+    btnLock.textContent = isLocked ? 'Locked' : 'Lock';
+  });
 
   // Keyboard shortcuts
   const PAN_STEP = 60;

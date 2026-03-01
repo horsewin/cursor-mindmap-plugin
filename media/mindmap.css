@@ -90,6 +90,18 @@ body {
   opacity: 0.9;
 }
 
+#btn-lock {
+  font-size: 11px;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+#btn-lock.active {
+  opacity: 1;
+  background: var(--vscode-statusBarItem-warningBackground, #c4710e) !important;
+  color: var(--vscode-statusBarItem-warningForeground, #ffffff) !important;
+}
+
 /* Main Content */
 #main-content {
   flex: 1;
@@ -137,13 +149,48 @@ body {
   white-space: pre;
 }
 
-#markdown-editor {
+#editor-highlight-area {
   flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+#highlight-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 12px 16px 12px 8px;
+  font-family: var(--vscode-editor-font-family, 'Menlo', 'Monaco', 'Courier New', monospace);
+  font-size: var(--vscode-editor-font-size, 13px);
+  line-height: 1.6;
+  tab-size: 2;
+  white-space: pre;
+  overflow: hidden;
+  color: transparent;
+  pointer-events: none;
+}
+
+#highlight-backdrop mark {
+  background: rgba(234, 179, 8, 0.35);
+  color: transparent;
+  border-radius: 2px;
+}
+
+#highlight-backdrop mark.current {
+  background: rgba(234, 179, 8, 0.7);
+}
+
+#markdown-editor {
+  position: relative;
+  width: 100%;
+  height: 100%;
   resize: none;
   border: none;
   outline: none;
   padding: 12px 16px 12px 8px;
-  background: var(--vscode-editor-background, #1e1e1e);
+  background: transparent;
   color: var(--vscode-editor-foreground, #cccccc);
   font-family: var(--vscode-editor-font-family, 'Menlo', 'Monaco', 'Courier New', monospace);
   font-size: var(--vscode-editor-font-size, 13px);
