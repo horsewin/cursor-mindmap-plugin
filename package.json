@@ -2,7 +2,7 @@
   "name": "cursor-mindmap",
   "displayName": "Mindmap Editor",
   "description": "Visual mindmap editor for *.mindmap.md files",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "cursor-mindmap",
   "repository": {
     "type": "git",

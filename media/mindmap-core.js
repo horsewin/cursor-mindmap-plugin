@@ -92,7 +92,7 @@
         parent.children.push(node);
         stack.push({ node, indent, headingLevel: 0 });
         lastNode = node;
-      } else {
+      } else if (line.trim().length > 0) {
         lastNode = null;
       }
     }

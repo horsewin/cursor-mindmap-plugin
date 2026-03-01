@@ -207,7 +207,24 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
   </div>
   <div id="main-content" class="mode-split">
     <div id="markdown-pane">
-      <textarea id="markdown-editor" spellcheck="false"></textarea>
+      <div id="search-bar" style="display:none;">
+        <div class="search-row">
+          <input id="search-input" type="text" placeholder="Search..." />
+          <span id="search-count"></span>
+          <button id="search-prev" title="Previous (Shift+Enter)">&#x25B2;</button>
+          <button id="search-next" title="Next (Enter)">&#x25BC;</button>
+          <button id="search-close" title="Close (Esc)">&times;</button>
+        </div>
+        <div id="replace-row" class="search-row" style="display:none;">
+          <input id="replace-input" type="text" placeholder="Replace..." />
+          <button id="replace-one" title="Replace">Replace</button>
+          <button id="replace-all" title="Replace All">All</button>
+        </div>
+      </div>
+      <div id="editor-wrapper">
+        <div id="line-numbers" aria-hidden="true"></div>
+        <textarea id="markdown-editor" spellcheck="false"></textarea>
+      </div>
     </div>
     <div id="divider"></div>
     <div id="canvas-container">

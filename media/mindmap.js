@@ -55,9 +55,17 @@
   const mainContent = document.getElementById('main-content');
   const markdownPane = document.getElementById('markdown-pane');
   const markdownEditor = document.getElementById('markdown-editor');
+  const lineNumbers = document.getElementById('line-numbers');
   const divider = document.getElementById('divider');
   const btnSplit = document.getElementById('btn-split');
   const btnPreview = document.getElementById('btn-preview');
+
+  // Search/Replace elements
+  const searchBar = document.getElementById('search-bar');
+  const searchInput = document.getElementById('search-input');
+  const replaceInput = document.getElementById('replace-input');
+  const replaceRow = document.getElementById('replace-row');
+  const searchCountEl = document.getElementById('search-count');
 
   // ─── View Mode ─────────────────────────────────────────────
   function setViewMode(mode) {
@@ -124,6 +132,17 @@
   });
 
   markdownEditor.addEventListener('keydown', (e) => {
+    // Search/Replace shortcuts
+    if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+      e.preventDefault();
+      openSearch(false);
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
+      e.preventDefault();
+      openSearch(true);
+      return;
+    }
     // Allow Tab for indentation in textarea
     if (e.key === 'Tab') {
       e.preventDefault();
@@ -150,7 +169,139 @@
       markdownEditor.selectionEnd = Math.min(selEnd, text.length);
     }
     editorUpdateFromMindmap = false;
+    updateLineNumbers();
   }
+
+  // ─── Line Numbers ───────────────────────────────────────────────
+  function updateLineNumbers() {
+    const lineCount = markdownEditor.value.split('\n').length;
+    const lines = [];
+    for (let i = 1; i <= lineCount; i++) {
+      lines.push(i);
+    }
+    lineNumbers.textContent = lines.join('\n');
+  }
+
+  markdownEditor.addEventListener('scroll', () => {
+    lineNumbers.scrollTop = markdownEditor.scrollTop;
+  });
+
+  markdownEditor.addEventListener('input', updateLineNumbers);
+
+  // ─── Search / Replace ───────────────────────────────────────────
+  let searchMatches = [];
+  let searchIndex = -1;
+
+  function openSearch(withReplace) {
+    searchBar.style.display = '';
+    replaceRow.style.display = withReplace ? '' : 'none';
+    searchInput.focus();
+    const sel = markdownEditor.value.substring(markdownEditor.selectionStart, markdownEditor.selectionEnd);
+    if (sel) {
+      searchInput.value = sel;
+    }
+    runSearch();
+  }
+
+  function closeSearch() {
+    searchBar.style.display = 'none';
+    searchMatches = [];
+    searchIndex = -1;
+    searchCountEl.textContent = '';
+    markdownEditor.focus();
+  }
+
+  function runSearch() {
+    const query = searchInput.value;
+    searchMatches = [];
+    searchIndex = -1;
+    if (!query) {
+      searchCountEl.textContent = '';
+      return;
+    }
+    const text = markdownEditor.value;
+    let idx = text.indexOf(query);
+    while (idx !== -1) {
+      searchMatches.push(idx);
+      idx = text.indexOf(query, idx + 1);
+    }
+    searchCountEl.textContent = searchMatches.length > 0
+      ? `${searchMatches.length} found`
+      : 'No results';
+    if (searchMatches.length > 0) {
+      searchIndex = 0;
+      highlightMatch();
+    }
+  }
+
+  function highlightMatch() {
+    if (searchIndex < 0 || searchIndex >= searchMatches.length) return;
+    const pos = searchMatches[searchIndex];
+    const len = searchInput.value.length;
+    markdownEditor.focus();
+    markdownEditor.selectionStart = pos;
+    markdownEditor.selectionEnd = pos + len;
+    searchCountEl.textContent = `${searchIndex + 1}/${searchMatches.length}`;
+  }
+
+  function searchNext() {
+    if (searchMatches.length === 0) return;
+    searchIndex = (searchIndex + 1) % searchMatches.length;
+    highlightMatch();
+  }
+
+  function searchPrev() {
+    if (searchMatches.length === 0) return;
+    searchIndex = (searchIndex - 1 + searchMatches.length) % searchMatches.length;
+    highlightMatch();
+  }
+
+  function replaceOne() {
+    if (searchIndex < 0 || searchIndex >= searchMatches.length) return;
+    const query = searchInput.value;
+    const replacement = replaceInput.value;
+    const pos = searchMatches[searchIndex];
+    const text = markdownEditor.value;
+    markdownEditor.value = text.substring(0, pos) + replacement + text.substring(pos + query.length);
+    markdownEditor.dispatchEvent(new Event('input'));
+    runSearch();
+    if (searchMatches.length > 0) {
+      searchIndex = Math.min(searchIndex, searchMatches.length - 1);
+      highlightMatch();
+    }
+  }
+
+  function replaceAll() {
+    const query = searchInput.value;
+    if (!query) return;
+    const replacement = replaceInput.value;
+    markdownEditor.value = markdownEditor.value.split(query).join(replacement);
+    markdownEditor.dispatchEvent(new Event('input'));
+    runSearch();
+  }
+
+  searchInput.addEventListener('input', runSearch);
+  document.getElementById('search-next').addEventListener('click', searchNext);
+  document.getElementById('search-prev').addEventListener('click', searchPrev);
+  document.getElementById('search-close').addEventListener('click', closeSearch);
+  document.getElementById('replace-one').addEventListener('click', replaceOne);
+  document.getElementById('replace-all').addEventListener('click', replaceAll);
+
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.shiftKey ? searchPrev() : searchNext();
+    }
+    if (e.key === 'Escape') {
+      closeSearch();
+    }
+  });
+
+  replaceInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeSearch();
+    }
+  });
 
   // ─── Rendering ────────────────────────────────────────────────
   function flattenLayout(layoutNode, list) {
