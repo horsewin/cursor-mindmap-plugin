@@ -230,30 +230,35 @@
       : 'No results';
     if (searchMatches.length > 0) {
       searchIndex = 0;
-      highlightMatch();
+      selectMatch();
     }
   }
 
-  function highlightMatch() {
+  function selectMatch() {
     if (searchIndex < 0 || searchIndex >= searchMatches.length) return;
     const pos = searchMatches[searchIndex];
     const len = searchInput.value.length;
-    markdownEditor.focus();
     markdownEditor.selectionStart = pos;
     markdownEditor.selectionEnd = pos + len;
     searchCountEl.textContent = `${searchIndex + 1}/${searchMatches.length}`;
   }
 
+  function navigateMatch() {
+    if (searchIndex < 0 || searchIndex >= searchMatches.length) return;
+    markdownEditor.focus();
+    selectMatch();
+  }
+
   function searchNext() {
     if (searchMatches.length === 0) return;
     searchIndex = (searchIndex + 1) % searchMatches.length;
-    highlightMatch();
+    navigateMatch();
   }
 
   function searchPrev() {
     if (searchMatches.length === 0) return;
     searchIndex = (searchIndex - 1 + searchMatches.length) % searchMatches.length;
-    highlightMatch();
+    navigateMatch();
   }
 
   function replaceOne() {
@@ -1039,7 +1044,14 @@
   // Keyboard shortcuts
   const PAN_STEP = 60;
   document.addEventListener('keydown', (e) => {
-    // Don't intercept keys when editing markdown textarea
+    // Search/Replace shortcut (works from anywhere in split mode)
+    if (viewMode === 'split' && (e.ctrlKey || e.metaKey)) {
+      if (e.key === 'f') { e.preventDefault(); openSearch(false); return; }
+      if (e.key === 'h') { e.preventDefault(); openSearch(true); return; }
+    }
+
+    // Don't intercept keys when in search bar or editing markdown textarea
+    if (searchBar.contains(document.activeElement)) return;
     if (isEditing || document.activeElement === markdownEditor) return;
 
     // Preview mode: arrow keys and hjkl pan the view
