@@ -946,19 +946,28 @@
   // ─── Pan & Zoom ───────────────────────────────────────────────
   function onWheel(e) {
     e.preventDefault();
-    const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
-    const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom + delta));
 
-    // Zoom toward mouse position
-    const containerRect = container.getBoundingClientRect();
-    const mouseX = e.clientX - containerRect.left;
-    const mouseY = e.clientY - containerRect.top;
+    if (e.ctrlKey) {
+      // Pinch-to-zoom (ctrlKey is set by trackpad pinch gesture)
+      const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom + delta));
 
-    const scale = newZoom / zoom;
-    panX = mouseX - (mouseX - panX) * scale;
-    panY = mouseY - (mouseY - panY) * scale;
+      // Zoom toward mouse position
+      const containerRect = container.getBoundingClientRect();
+      const mouseX = e.clientX - containerRect.left;
+      const mouseY = e.clientY - containerRect.top;
 
-    zoom = newZoom;
+      const scale = newZoom / zoom;
+      panX = mouseX - (mouseX - panX) * scale;
+      panY = mouseY - (mouseY - panY) * scale;
+
+      zoom = newZoom;
+    } else {
+      // Two-finger scroll → pan the view
+      panX -= e.deltaX;
+      panY -= e.deltaY;
+    }
+
     render();
   }
 
